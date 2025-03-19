@@ -1,0 +1,78 @@
+local eb = {
+    cfg = {
+        enable = gui.Checkbox(gui.Reference("MISC"), "eb.enable", "EdgeBug Assistant", true),
+        sensitivity = gui.Slider(gui.Reference("MISC"), "eb.sense", "Detection Sensitivity", 40, 20, 100),
+        vis_color = gui.ColorPicker(gui.Reference("MISC"), "eb.clr", "Indicator Color", 255, 80, 120, 200)
+    },
+    physics = {
+        gravity = 800.0,
+        min_fall_speed = -300
+    }
+}
+
+local function SimpleCollisionCheck(start, end_pos)
+    local trace = engine.TraceLine(start, end_pos, 0x1)
+    return trace.fraction < 1.0
+end
+
+local function CalculateHorizontalSpeed(vel)
+    return math.sqrt(vel.x^2 + vel.y^2)
+end
+
+local function ShouldActivate(origin, velocity)
+    local steps = 128
+    local current_pos = origin
+    local current_vel = velocity
+    
+    for i = 1, steps do
+        current_vel.z = current_vel.z - (eb.physics.gravity * 0.015)
+        current_pos = current_pos + (current_vel * 0.015)
+        
+        -- Vertical collision check
+        if SimpleCollisionCheck(current_pos, current_pos - Vector3(0, 0, 50)) then
+            -- Edge detection
+            local left_check = SimpleCollisionCheck(current_pos, current_pos + Vector3(eb.cfg.sensitivity:GetValue(), 0, 0))
+            local right_check = SimpleCollisionCheck(current_pos, current_pos - Vector3(eb.cfg.sensitivity:GetValue(), 0, 0))
+            
+            return not (left_check and right_check)
+        end
+    end
+    return false
+end
+
+callbacks.Register("CreateMove", function(cmd)
+    if not eb.cfg.enable:GetValue() then return end
+    
+    local player = entities.GetLocalPlayer()
+    if not player or not player:IsAlive() then return end
+    
+    local flags = player:GetPropInt("m_fFlags")
+    if bit.band(flags, 1) ~= 0 then return end -- Skip if on ground
+    
+    local vel = player:GetPropVector("m_vecVelocity")
+    if vel.z > eb.physics.min_fall_speed then return end
+    
+    local origin = player:GetAbsOrigin()
+    
+    if ShouldActivate(origin, vel) then
+        -- Horizontal speed reduction
+        local h_speed = CalculateHorizontalSpeed(vel)
+        if h_speed > 0 then
+            cmd:SetForwardMove(-vel.x * 1000 / h_speed)
+            cmd:SetSideMove(-vel.y * 1000 / h_speed)
+        end
+        
+        -- Vertical control
+        if vel.z < -750 then
+            cmd:SetButtons(bit.bor(cmd:GetButtons(), 4))
+        end
+    end
+end)
+
+callbacks.Register("Draw", function()
+    if not eb.cfg.enable:GetValue() then return end
+    
+    local scr_w, scr_h = draw.GetScreenSize()
+    draw.Color(eb.cfg.vis_color:GetValue())
+    draw.FilledCircle(scr_w/2, scr_h/2 + 50, 8, 16)
+end)

@@ -1,0 +1,58 @@
+-- Local Player Bounding Box Script for CS2
+local bbox_group = gui.Groupbox(gui.Reference("Visuals", "Overlay"), "Local Player BBox")
+local bbox_enable = gui.Checkbox(bbox_group, "local_bbox_enable", "Show Local Player BBox", false)
+local bbox_color = gui.ColorPicker(bbox_group, "bbox_clr", "Box Color", 0, 255, 0, 255)
+
+local function DrawLocalBBox()
+    if not bbox_enable:GetValue() then return end
+    
+    local local_player = entities.GetLocalPlayer()
+    if not local_player or not local_player:IsAlive() then return end
+
+    -- Bounding box calculation
+    local min, max = local_player:GetMins(), local_player:GetMaxs()
+    local origin = local_player:GetAbsOrigin()
+    
+    -- Generate edge points
+    local edges = {
+        Vector3(min.x, min.y, min.z),
+        Vector3(max.x, min.y, min.z),
+        Vector3(max.x, max.y, min.z),
+        Vector3(min.x, max.y, min.z),
+        Vector3(min.x, min.y, max.z),
+        Vector3(max.x, min.y, max.z),
+        Vector3(max.x, max.y, max.z),
+        Vector3(min.x, max.y, max.z)
+    }
+
+    -- Project points to screen
+    local screen_points = {}
+    for _, point in ipairs(edges) do
+        local pos = origin + point
+        local x, y = client.WorldToScreen(pos)
+        if x and y then
+            table.insert(screen_points, {x = x, y = y})
+        end
+    end
+
+    -- Draw bounding box
+    if #screen_points >= 8 then
+        draw.Color(bbox_color:GetValue())
+        -- Bottom square
+        for i = 1, 4 do
+            local next_idx = i % 4 + 1
+            draw.Line(screen_points[i].x, screen_points[i].y, screen_points[next_idx].x, screen_points[next_idx].y)
+        end
+        -- Top square
+        for i = 5, 8 do
+            local next_idx = (i - 4) % 4 + 5
+            draw.Line(screen_points[i].x, screen_points[i].y, screen_points[next_idx].x, screen_points[next_idx].y)
+        end
+        -- Vertical connections
+        for i = 1, 4 do
+            draw.Line(screen_points[i].x, screen_points[i].y, screen_points[i+4].x, screen_points[i+4].y)
+        end
+    end
+end
+
+callbacks.Register("Draw", DrawLocalBBox)
